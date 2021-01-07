@@ -1,0 +1,118 @@
+version: '3.7'
+
+# Define services
+services:
+  
+  # App backend service
+  backend: #app-server:
+    # Configuration for building the docker image for the backend service
+    build:
+      context: softplan-desafio-fullstack-fernando-vieira 
+      dockerfile: Dockerfile
+    container_name: softplan-backend  
+    ports:
+      - "8080:8080" # Forward the exposed port 8080 on the container to port 8080 on the host machine
+    restart: always
+    depends_on: 
+      - db # This service depends on mysql. Start that first.
+    environment: # Pass environment variables to the service
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/db-softplan-desafio-fullstack-001?verifyServerCertificate=false&useSSL=true 
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: luiz05012013    
+    networks: # Networks to join (Services on the same network can communicate with each other using their name)
+      - nw_backend
+      - nw_frontend
+
+  # HTTP server     
+  nginx:
+        build:
+            context: softplan-desafio-fullstack-frontend
+            dockerfile: ./docker/nginx.dockerfile
+        image: fvieirajava/nginx
+        container_name: softplan-nginx
+        ports:
+            - "80:80"
+        networks: 
+            - nw_frontend
+        depends_on: 
+            - "frontend1"
+            - "frontend2"
+
+  # App Frontend Service 
+  frontend1: #app-client:
+    build:
+      context: softplan-desafio-fullstack-frontend # Use an image built from the specified dockerfile in the `polling-app-client` directory.
+      dockerfile: ./docker/frontend.dockerfile
+      args:
+        REACT_APP_API_BASE_URL: http://localhost:8090/
+
+    container_name: softplan-frontend-1
+    ports:
+      - "8090:80" # Forward the exposed port 80 on the container to port 80 on the host machine
+    restart: always
+    depends_on:
+      - backend #app-server
+    networks:
+      - nw_frontend  
+      - nw_backend
+
+  # App Frontend Service 
+  frontend2: #app-client:
+    build:
+      context: softplan-desafio-fullstack-frontend # Use an image built from the specified dockerfile in the `polling-app-client` directory.
+      dockerfile: ./docker/frontend.dockerfile
+
+      #image: fvieirajava/frontend2
+      args:
+        REACT_APP_API_BASE_URL: http://localhost:8091/
+
+    container_name: softplan-frontend-2 
+    ports:
+      - "8091:80" # Forward the exposed port 80 on the container to port 80 on the host machine
+    restart: always
+    depends_on:
+      - backend #app-server
+    networks:
+      - nw_frontend  
+      - nw_backend
+
+  # Database Service                   
+  db:
+    image: mysql
+    command:  --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      - MYSQL_ROOT_PASSWORD=luiz05012013
+      - MYSQL_ROOT_HOST=%
+      - MYSQL_DATABASE=db-softplan-desafio-fullstack-001
+    container_name: softplan-mysql  
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 3306 || exit 1"]
+      interval: 1m30s
+      timeout: 60s
+      retries: 6
+    volumes:
+      - .sql/setup.sql:/docker-entrypoint-initdb.d/setup-001.sql
+      - db_data:/var/lib/mysql
+    networks:
+      - nw_backend
+
+  # Database Migration Tool    
+  flyway:
+    container_name: sotfplan-flyway
+    image: flyway/flyway
+    command: -url=jdbc:mysql://db:3306/db-softplan-desafio-fullstack-001?verifyServerCertificate=false&useSSL=true -schemas=db-softplan-desafio-fullstack-001 -user=root -password=luiz05012013 -connectRetries=60 migrate 
+    volumes:
+     - "./sql:/flyway/sql"
+    depends_on:
+     - db
+    networks:
+      - nw_backend
+
+volumes:
+  db_data:
+
+networks:
+  nw_backend:
+  nw_frontend:    
